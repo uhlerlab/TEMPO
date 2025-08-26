@@ -1,12 +1,13 @@
 import numpy as np
+import os
+import sys
 import torch
 torch.cuda.empty_cache()
 import torch.nn as nn
 import torchdiffeq
+from pykeops.torch import LazyTensor
 from models import FMWrapper
 from models import VectorFieldModel
-import sys
-import os
 
 def load_adata(adata_path: str, time_col: str, data_view: str, layer=None):
     adata = sc.read_h5ad(adata_path)
