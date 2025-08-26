@@ -5,6 +5,7 @@ import torch
 torch.cuda.empty_cache()
 import torch.nn as nn
 import torchdiffeq
+import ruptures as rpt
 from pykeops.torch import LazyTensor
 from models import FMWrapper
 from models import VectorFieldModel
@@ -20,7 +21,24 @@ def load_adata(adata_path: str, time_col: str, data_view: str, layer=None):
     t_raw = np.asarray(adata.obs[time_col]).astype(float)
     return adata, X, t_raw
 
-
+def discretize_pseudotime(adata, velocity_key, n_changepoints):
+    adata_sorted = adata[adata.obs['fle_ddhodge_potential'].argsort()].copy()
+    import numpy as np
+    
+    if 'velocity_norm' in adata_sorted.obs:
+        signal_v = adata_sorted.obs['velocity_norm'].values
+    else:
+        velocity_data = adata_sorted.obsm[velocity_key]
+        signal_v = np.linalg.norm(velocity_data, axis=1)
+    
+    signal_v_smooth = pd.Series(signal_v).rolling(window=20, center=True, min_periods=1).mean().values
+    
+    algo = rpt.Dynp(model="l2").fit(signal_v_smooth)
+    changepoints = algo.predict(n_bkps=n_changepoints)
+    changepoints.pop()
+    
+    return changepoints
+    
 def sample_trajectory(
     model, X, y, device, guidance=1.0, conditional_model=True, atol=1e-9, rtol=1e-7, method="dopri5", steps=1001
 ):
@@ -77,7 +95,6 @@ def normalize_times(t_raw):
 
 def split_by_time(X, t_norm, timepoints):
     return [X[np.isclose(t_norm, tp)] for tp in timepoints]
-
 
 
 def compute_pairwise_ot_plans(X_by_t, metric="euclidean", pow_cost=2.0):
@@ -256,3 +273,4 @@ def build_model(d, lr: float, weight_decay: float = 0.0):
     )
     opt = Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     return model, opt
+    
